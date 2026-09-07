@@ -51,4 +51,22 @@ edit($home . '/config/packages/doctrine.yaml', function (string $s, string $p): 
     return str_replace($needle, "        server_version: '%env(UVDESK_DB_SERVER_VERSION)%'", $s);
 });
 
+
+// 3. The skeleton's ExceptionSubscriber renders its own 500 page and calls
+//    setResponse(), which stops event propagation before Symfony's own
+//    ErrorListener gets to log the exception - so on a stock install every 500
+//    is invisible in `railway logs`. Log it to stderr on the way past.
+edit($home . '/src/EventListener/ExceptionSubscriber.php', function (string $s, string $p): string {
+    $needle = "\t\t\t} else {\n\t\t\t\t\$template = \$this->twig->render('errors/error.html.twig', [\n\t\t\t\t\t'message'     => 'Internal Server Error',";
+    if (strpos($s, $needle) === false) {
+        fwrite(STDERR, "the 500 branch was not found in $p\n");
+        exit(1);
+    }
+    $logger = "\t\t\t} else {\n"
+        . "\t\t\t\terror_log(sprintf('[uvdesk] %s: %s at %s:%d', get_class(\$exception), \$exception->getMessage(), \$exception->getFile(), \$exception->getLine()));\n"
+        . "\t\t\t\t\$template = \$this->twig->render('errors/error.html.twig', [\n"
+        . "\t\t\t\t\t'message'     => 'Internal Server Error',";
+    return str_replace($needle, $logger, $s);
+});
+
 echo "repo patches applied\n";
